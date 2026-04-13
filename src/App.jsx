@@ -275,7 +275,7 @@ function History({sessions,onDelete}){
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><div style={card}><div style={lbl}>Sessions</div><div style={{fontSize:22,fontWeight:700,color:"#00c896",fontFamily:"monospace"}}>{sessions.length}</div></div><div style={card}><div style={lbl}>Total hours</div><div style={{fontSize:22,fontWeight:700,color:"#7c6df0",fontFamily:"monospace"}}>{total.toFixed(1)}h</div></div></div>
     <div style={{display:"flex",flexDirection:"column",gap:6}}>{sessions.map((s,i)=>{const ph=BASE_PHASES.find(p=>p.id===s.phase);return(<div key={i} style={{...card,display:"flex",gap:10,alignItems:"flex-start"}}><div style={{width:8,height:8,borderRadius:"50%",background:ph?.color||"#4a5568",flexShrink:0,marginTop:5}}/><div style={{flex:1,minWidth:0}}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><span style={{fontSize:12,fontWeight:600,color:"#e2e8f0"}}>{s.hrs}h  -  Phase {s.phase}</span><span style={{fontSize:11,color:"#4a5568",flexShrink:0}}>{fmtDate(s.date)}</span></div>{s.notes&&<div style={{fontSize:11,color:"#64748b",marginTop:4,lineHeight:1.5}}>{s.notes}</div>}</div><button onClick={()=>onDelete(i)} style={{background:"none",border:"none",color:"#2d3748",cursor:"pointer",fontSize:16,padding:"0 2px",flexShrink:0}} onMouseEnter={e=>e.target.style.color="#f43f5e"} onMouseLeave={e=>e.target.style.color="#2d3748"}>x</button></div>);})}
-  </div>);
+  </div></div>);
 }
 
 const TABS=[{id:"dashboard",label:"Dashboard"},{id:"phases",label:"Phases"},{id:"course",label:"Course"},{id:"quiz",label:"Quiz"},{id:"cards",label:"Flashcards"},{id:"timer",label:"Timer"},{id:"log",label:"Log"},{id:"history",label:"History"}];
