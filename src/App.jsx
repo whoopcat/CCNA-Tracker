@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { QUESTIONS } from "./questions.js";
-import { COURSE, TOTAL_VIDEOS } from "./course.js";
+import { QUESTIONS } from "../questions.js";
+import { COURSE, TOTAL_VIDEOS } from "../course.js";
 
 const SB_URL=import.meta.env.VITE_SUPABASE_URL,SB_KEY=import.meta.env.VITE_SUPABASE_ANON_KEY;
 const USE_SB=!!(SB_URL&&SB_KEY&&SB_URL!=="undefined");
