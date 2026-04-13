@@ -9,6 +9,24 @@ const getSB=async()=>{if(_sb)return _sb;if(!USE_SB)return null;try{const{createC
 const loadS=async(key,fb)=>{const db=await getSB();if(db){try{const{data}=await db.from("kv_store").select("value").eq("key",key).maybeSingle();if(data?.value)return JSON.parse(data.value);}catch{}}try{const v=localStorage.getItem(key);return v?JSON.parse(v):fb;}catch{return fb;}};
 const saveS=async(key,val)=>{const str=JSON.stringify(val);const db=await getSB();if(db){try{await db.from("kv_store").upsert({key,value:str,updated_at:new Date().toISOString()});return;}catch{}}try{localStorage.setItem(key,str);}catch{}};
 
+function UserAuth({onUser}){
+  const[mode,setMode]=useState("login"),[email,setEmail]=useState(""),[pass,setPass]=useState(""),[err,setErr]=useState(""),[busy,setBusy]=useState(false);
+  const submit=async e=>{e.preventDefault();setErr("");setBusy(true);const db=await getSB();if(!db){setErr("Supabase not configured");setBusy(false);return;}const fn=mode==="login"?db.auth.signInWithPassword.bind(db.auth):db.auth.signUp.bind(db.auth);const{data,error}=await fn({email,password:pass});if(error){setErr(error.message);setBusy(false);return;}if(data?.user)onUser(data.user);setBusy(false);};
+  return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"80vh",background:"#0d1117",fontFamily:'"Courier New",Courier,monospace',color:"#e2e8f0"}}>
+    <div style={{background:"#111827",border:"1px solid #1e2a3a",borderRadius:12,padding:"32px 28px",width:"100%",maxWidth:360}}>
+      <div style={{fontSize:16,fontWeight:700,color:"#00c896",letterSpacing:"0.1em",marginBottom:4}}>CCNA 200-301</div>
+      <div style={{fontSize:11,color:"#4a5568",marginBottom:24,letterSpacing:"0.07em",textTransform:"uppercase"}}>{mode==="login"?"sign in":"create account"}</div>
+      <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div><label style={lbl}>Email</label><input style={inp} type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoFocus/></div>
+        <div><label style={lbl}>Password</label><input style={inp} type="password" value={pass} onChange={e=>setPass(e.target.value)} required minLength={6}/></div>
+        {err&&<div style={{fontSize:12,color:"#f43f5e",background:"#210a10",borderRadius:6,padding:"8px 10px"}}>{err}</div>}
+        <button type="submit" disabled={busy} style={{background:"#00c896",color:"#0a2018",border:"none",borderRadius:8,padding:"10px",fontSize:13,fontWeight:700,cursor:busy?"not-allowed":"pointer",letterSpacing:"0.05em",fontFamily:"inherit"}}>{busy?"...":(mode==="login"?"Sign in":"Create account")}</button>
+        <div style={{textAlign:"center",fontSize:12,color:"#4a5568"}}>{mode==="login"?"No account? ":"Have an account? "}<button type="button" onClick={()=>{setMode(m=>m==="login"?"signup":"login");setErr("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#00c896",fontSize:12,fontFamily:"inherit",textDecoration:"underline"}}>{mode==="login"?"Sign up":"Sign in"}</button></div>
+      </form>
+    </div>
+  </div>);
+}
+
 const BASE_PHASES=[
   {id:1,label:"Consolidation & gap-fill",short:"Phase 1",color:"#7c6df0",dim:"#1a1430",weight:0.15,topics:["Quick review: VLANs, trunking, STP","Quick review: OSPF single-area","Quick review: HSRP, PAgP/LACP","NAT/PAT  -  concepts + config","IPv6 addressing & routing basics","IP services: NTP, DHCP, DNS roles","Subnetting speed drills (aim <90s)","Packet Tracer: end-to-end lab walkthrough"]},
   {id:2,label:"Network security",short:"Phase 2",color:"#00c896",dim:"#0a2018",weight:0.28,topics:["Device hardening: passwords, SSH, banners","AAA with RADIUS & TACACS+","Standard & extended ACLs","Named ACLs & troubleshooting","Port security on switches","DHCP snooping & Dynamic ARP Inspection","802.1X port-based authentication","VPN concepts: site-to-site & remote access","IPsec fundamentals","Firewall concepts: stateful vs stateless","Common threats: VLAN hopping, spoofing, MITM","Security programme concepts (CIA triad)"]},
@@ -281,10 +299,12 @@ function History({sessions,onDelete}){
 const TABS=[{id:"dashboard",label:"Dashboard"},{id:"phases",label:"Phases"},{id:"course",label:"Course"},{id:"quiz",label:"Quiz"},{id:"cards",label:"Flashcards"},{id:"timer",label:"Timer"},{id:"log",label:"Log"},{id:"history",label:"History"}];
 
 export default function App(){
-  const[tab,setTab]=useState("dashboard"),[checked,setChecked]=useState({}),[notes,setNotes]=useState({}),[weak,setWeak]=useState({}),[sessions,setSessions]=useState([]),[examDate,setExamDate]=useState(""),[openPhase,setOpenPhase]=useState(1),[quizHistory,setQuizHistory]=useState([]),[srsData,setSrsData]=useState({}),[loaded,setLoaded]=useState(false),[syncing,setSyncing]=useState(false);
+  const[tab,setTab]=useState("dashboard"),[checked,setChecked]=useState({}),[notes,setNotes]=useState({}),[weak,setWeak]=useState({}),[sessions,setSessions]=useState([]),[examDate,setExamDate]=useState(""),[openPhase,setOpenPhase]=useState(1),[quizHistory,setQuizHistory]=useState([]),[srsData,setSrsData]=useState({}),[loaded,setLoaded]=useState(false),[syncing,setSyncing]=useState(false),[user,setUser]=useState(null),[authReady,setAuthReady]=useState(!USE_SB);
   const phases=useMemo(()=>getPhases(examDate),[examDate]);
-  useEffect(()=>{(async()=>{setChecked(await loadS("ccna:checked",{}));setNotes(await loadS("ccna:notes",{}));setWeak(await loadS("ccna:weak",{}));setSessions(await loadS("ccna:sessions",[]));setExamDate(await loadS("ccna:examdate",""));setQuizHistory(await loadS("ccna:quizhistory",[]));setSrsData(await loadS("ccna:srsdata",{}));setLoaded(true);})();},[]);
-  const persist=useCallback(async(key,setter,val)=>{setter(val);setSyncing(true);await saveS(key,val);setSyncing(false);},[]);
+  useEffect(()=>{if(!USE_SB){setAuthReady(true);return;}(async()=>{const db=await getSB();if(!db){setAuthReady(true);return;}const{data:{session}}=await db.auth.getSession();if(session?.user)setUser(session.user);setAuthReady(true);const{data:{subscription}}=db.auth.onAuthStateChange((_,s)=>{setUser(s?.user??null);});return()=>subscription.unsubscribe();})();},[]);
+  useEffect(()=>{if(!authReady)return;if(USE_SB&&!user){setLoaded(false);return;}(async()=>{const p=user?`${user.id}:`:"";setChecked(await loadS(`${p}ccna:checked`,{}));setNotes(await loadS(`${p}ccna:notes`,{}));setWeak(await loadS(`${p}ccna:weak`,{}));setSessions(await loadS(`${p}ccna:sessions`,[]));setExamDate(await loadS(`${p}ccna:examdate`,""));setQuizHistory(await loadS(`${p}ccna:quizhistory`,[]));setSrsData(await loadS(`${p}ccna:srsdata`,{}));setLoaded(true);})();},[authReady,user]);
+  const persist=useCallback(async(key,setter,val)=>{setter(val);setSyncing(true);await saveS(user?`${user.id}:${key}`:key,val);setSyncing(false);},[user]);
+  const signOut=useCallback(async()=>{const db=await getSB();if(db)await db.auth.signOut();setUser(null);setChecked({});setNotes({});setWeak({});setSessions([]);setExamDate("");setQuizHistory([]);setSrsData({});setLoaded(false);},[]);
   const updC=useCallback(v=>persist("ccna:checked",setChecked,v),[persist]);
   const updN=useCallback(v=>persist("ccna:notes",setNotes,v),[persist]);
   const updW=useCallback(v=>persist("ccna:weak",setWeak,v),[persist]);
@@ -299,12 +319,14 @@ export default function App(){
   const autoLog=useCallback((phase,hrs)=>addSession({date:todayStr(),hrs:parseFloat(hrs.toFixed(2)),phase,notes:"Pomodoro  -  auto"}),[addSession]);
   const topicsDone=BASE_PHASES.reduce((s,p)=>s+p.topics.filter((_,i)=>checked[tk(p.id,i)]).length,0);
   const pct=Math.round(topicsDone/TOTAL_TOPICS*100),streak=getStreak(sessions);
+  if(!authReady)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"60vh",color:"#4a5568",fontFamily:"monospace",fontSize:13}}><div style={{textAlign:"center"}}><div style={{fontSize:20,marginBottom:8}}>📡</div>loading...</div></div>);
+  if(USE_SB&&!user)return(<UserAuth onUser={setUser}/>);
   if(!loaded)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"60vh",color:"#4a5568",fontFamily:"monospace",fontSize:13}}><div style={{textAlign:"center"}}><div style={{fontSize:20,marginBottom:8}}>📡</div>loading...</div></div>);
   return(<div style={{background:"#0d1117",borderRadius:12,overflow:"hidden",fontFamily:'"Courier New",Courier,monospace',color:"#e2e8f0",minHeight:"80vh"}}>
     <div style={{padding:"16px 20px 0",borderBottom:"1px solid #1e2a3a",position:"sticky",top:0,background:"#0d1117",zIndex:10}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
         <div><span style={{fontSize:14,fontWeight:700,color:"#00c896",letterSpacing:"0.1em"}}>CCNA 200-301</span><span style={{fontSize:11,color:"#4a5568",marginLeft:10}}>tracker</span></div>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>{syncing&&<span style={{fontSize:10,color:"#4a5568"}}>saving...</span>}{!USE_SB&&<span style={{fontSize:10,color:"#f59e0b",background:"#211a08",borderRadius:20,padding:"3px 8px"}}>local</span>}{streak>0&&<span style={{background:"#211a08",border:"1px solid #f59e0b44",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#f59e0b"}}>🔥 {streak}d</span>}<span style={{background:"#0a2018",border:"1px solid #00c89644",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#00c896"}}>{pct}%</span></div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>{syncing&&<span style={{fontSize:10,color:"#4a5568"}}>saving...</span>}{!USE_SB&&<span style={{fontSize:10,color:"#f59e0b",background:"#211a08",borderRadius:20,padding:"3px 8px"}}>local</span>}{USE_SB&&user&&<span style={{fontSize:10,color:"#4a5568",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</span>}{USE_SB&&user&&<button onClick={signOut} style={{background:"none",border:"1px solid #1e2a3a",borderRadius:20,padding:"3px 10px",fontSize:10,color:"#4a5568",cursor:"pointer",fontFamily:"inherit"}}>sign out</button>}{streak>0&&<span style={{background:"#211a08",border:"1px solid #f59e0b44",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#f59e0b"}}>🔥 {streak}d</span>}<span style={{background:"#0a2018",border:"1px solid #00c89644",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#00c896"}}>{pct}%</span></div>
       </div>
       <div style={{display:"flex",overflowX:"auto",scrollbarWidth:"none"}}>{TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{background:"none",border:"none",cursor:"pointer",whiteSpace:"nowrap",padding:"8px 14px",fontSize:11,letterSpacing:"0.07em",textTransform:"uppercase",color:tab===t.id?"#00c896":"#4a5568",borderBottom:tab===t.id?"2px solid #00c896":"2px solid transparent",transition:"color .15s",fontFamily:"inherit",flexShrink:0}}>{t.label}</button>)}</div>
     </div>
