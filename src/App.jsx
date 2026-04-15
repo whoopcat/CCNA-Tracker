@@ -1,17 +1,18 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { QUESTIONS } from "../questions.js";
 import { COURSE, TOTAL_VIDEOS } from "../course.js";
+import { STUDY_NOTES } from "../notes.js";
 
 const SB_URL=import.meta.env.VITE_SUPABASE_URL,SB_KEY=import.meta.env.VITE_SUPABASE_ANON_KEY;
 const USE_SB=!!(SB_URL&&SB_KEY&&SB_URL!=="undefined");
 let _sb=null;
 const getSB=async()=>{if(_sb)return _sb;if(!USE_SB)return null;try{const{createClient}=await import("@supabase/supabase-js");_sb=createClient(SB_URL,SB_KEY);return _sb;}catch{return null;}};
 const loadS=async(key,fb)=>{const db=await getSB();if(db){try{const{data}=await db.from("kv_store").select("value").eq("key",key).maybeSingle();if(data?.value)return JSON.parse(data.value);}catch{}}try{const v=localStorage.getItem(key);return v?JSON.parse(v):fb;}catch{return fb;}};
-const saveS=async(key,val)=>{const str=JSON.stringify(val);const db=await getSB();if(db){try{await db.from("kv_store").upsert({key,value:str,updated_at:new Date().toISOString()});return;}catch{}}try{localStorage.setItem(key,str);}catch{}};
+const saveS=async(key,val)=>{const str=JSON.stringify(val);try{localStorage.setItem(key,str);}catch{}const db=await getSB();if(db){try{await db.from("kv_store").upsert({key,value:str,updated_at:new Date().toISOString()});}catch{}}};
 
 function UserAuth({onUser}){
   const[mode,setMode]=useState("login"),[email,setEmail]=useState(""),[pass,setPass]=useState(""),[err,setErr]=useState(""),[busy,setBusy]=useState(false);
-  const submit=async e=>{e.preventDefault();setErr("");setBusy(true);const db=await getSB();if(!db){setErr("Supabase not configured");setBusy(false);return;}const fn=mode==="login"?db.auth.signInWithPassword.bind(db.auth):db.auth.signUp.bind(db.auth);const{data,error}=await fn({email,password:pass});if(error){setErr(error.message);setBusy(false);return;}if(data?.user)onUser(data.user);setBusy(false);};
+  const submit=async e=>{e.preventDefault();setErr("");setBusy(true);const db=await getSB();if(!db){setErr("Supabase not configured");setBusy(false);return;}if(mode==="login"){const{data,error}=await db.auth.signInWithPassword({email,password:pass});if(error){setErr(error.message);setBusy(false);return;}if(data?.user)onUser(data.user);}else{const{data,error}=await db.auth.signUp({email,password:pass,options:{emailRedirectTo:window.location.origin}});if(error){setErr(error.message);setBusy(false);return;}if(data?.user&&data.session)onUser(data.user);else setErr("Check your email for a confirmation link.");};setBusy(false);};
   return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"80vh",background:"#0d1117",fontFamily:'"Courier New",Courier,monospace',color:"#e2e8f0"}}>
     <div style={{background:"#111827",border:"1px solid #1e2a3a",borderRadius:12,padding:"32px 28px",width:"100%",maxWidth:360}}>
       <div style={{fontSize:16,fontWeight:700,color:"#00c896",letterSpacing:"0.1em",marginBottom:4}}>CCNA 200-301</div>
@@ -78,7 +79,7 @@ const shuffle=arr=>{const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.
 const tk=(pid,i)=>`p${pid}_t${i}`;
 
 function getPhases(examDate){
-  if(!examDate)return BASE_PHASES.map((p,i)=>({...p,startDate:"",endDate:""}));
+  if(!examDate)return BASE_PHASES.map(p=>({...p,startDate:"",endDate:""}));
   const today=new Date();today.setHours(0,0,0,0);
   const exam=new Date(examDate+"T00:00:00");
   const totalDays=Math.max(1,Math.ceil((exam-today)/86400000));
@@ -185,29 +186,38 @@ function Phases({checked,notes,weak,toggleTopic,setNotes,setWeak,openPhase,setOp
 
 function RecallCard({q,a,color}){const[show,setShow]=useState(false);return(<div style={{background:"#111827",border:`1px solid ${color}33`,borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:12,color:"#e2e8f0",marginBottom:8,lineHeight:1.5}}>{q}</div>{a&&<button onClick={()=>setShow(s=>!s)} style={{background:show?color+"22":"#1e2a3a",border:`1px solid ${color}44`,borderRadius:6,color:show?color:"#4a5568",fontSize:11,padding:"4px 12px",cursor:"pointer",fontFamily:"monospace"}}>{show?"hide":"reveal answer"}</button>}{show&&a&&<div style={{fontSize:12,color:"#94a3b8",marginTop:8,lineHeight:1.6,borderTop:`1px solid ${color}22`,paddingTop:8}}>{a}</div>}</div>);}
 
+const YT_PLAYLIST="PLxbwE86jKRgMpuZuLBivzlM8s2Dk5lXBQ";
 function Course({checked,toggleVid,notes,setNotes}){
-  const[open,setOpen]=useState(null),[vtab,setVtab]=useState("summary");
+  const[open,setOpen]=useState(null),[vtab,setVtab]=useState({});
   const done=COURSE.filter(v=>checked[`vid_${v.day}`]).length;
   const byPhase={1:[],2:[],3:[],4:[]};COURSE.forEach(v=>{if(byPhase[v.phase])byPhase[v.phase].push(v);});
   const PC={1:"#7c6df0",2:"#00c896",3:"#f59e0b",4:"#f97316"};
   const PL={1:"Phase 1  -  Consolidation",2:"Phase 2  -  Security & Routing",3:"Phase 3  -  Wireless & Cloud",4:"Phase 4  -  Automation"};
+  const getTab=(day)=>vtab[day]||"video";
+  const setTab=(day,t)=>setVtab(s=>({...s,[day]:t}));
   return(<div>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}><div style={{fontSize:12,color:"#4a5568"}}>Jeremy's IT Lab  -  CCNA Full Course</div><div style={{fontSize:11,color:"#00c896",fontFamily:"monospace"}}>{done}/{TOTAL_VIDEOS} watched</div></div>
     <div style={{height:3,background:"#1e2a3a",borderRadius:2,marginBottom:16,overflow:"hidden"}}><div style={{width:`${Math.round(done/TOTAL_VIDEOS*100)}%`,height:"100%",background:"#00c896",borderRadius:2,transition:"width 0.4s"}}/></div>
     {[1,2,3,4].map(ph=>{const vids=byPhase[ph]||[],phDone=vids.filter(v=>checked[`vid_${v.day}`]).length;return(<div key={ph} style={{marginBottom:16}}>
       <div style={{fontSize:11,color:PC[ph],textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8,display:"flex",justifyContent:"space-between"}}><span>{PL[ph]}</span><span style={{fontFamily:"monospace"}}>{phDone}/{vids.length}</span></div>
-      <div style={{display:"flex",flexDirection:"column",gap:6}}>{vids.map(v=>{const k=`vid_${v.day}`,isDone=checked[k],isOpen=open===v.day;return(<div key={v.day} style={{border:`1px solid ${isOpen?PC[ph]+"55":"#1e2a3a"}`,borderRadius:10,overflow:"hidden"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>{vids.map(v=>{const k=`vid_${v.day}`,isDone=checked[k],isOpen=open===v.day,ct=getTab(v.day);
+        const watchUrl=`https://www.youtube.com/watch?list=${YT_PLAYLIST}&index=${v.day-1}`;
+        const embedUrl=`https://www.youtube.com/embed/videoseries?list=${YT_PLAYLIST}&index=${v.day-1}&rel=0`;
+        return(<div key={v.day} style={{border:`1px solid ${isOpen?PC[ph]+"55":"#1e2a3a"}`,borderRadius:10,overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:isOpen?PC[ph]+"11":"transparent"}}>
           <div onClick={()=>toggleVid(v.day)} style={{width:15,height:15,borderRadius:3,border:`1.5px solid ${isDone?PC[ph]:"#2d3748"}`,background:isDone?PC[ph]:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>{isDone&&<span style={{fontSize:9,color:"#0d1117",fontWeight:700}}>✓</span>}</div>
           <div onClick={()=>setOpen(isOpen?null:v.day)} style={{flex:1,cursor:"pointer"}}><div style={{fontSize:12,fontWeight:600,color:isDone?"#64748b":"#e2e8f0",textDecoration:isDone?"line-through":"none"}}>Day {v.day}: {v.title}</div><div style={{fontSize:10,color:"#4a5568"}}>{v.mins} min</div></div>
-          <a href={v.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:10,color:PC[ph],textDecoration:"none",background:PC[ph]+"22",borderRadius:6,padding:"4px 8px",flexShrink:0}}>Watch</a>
+          <a href={watchUrl} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:10,color:PC[ph],textDecoration:"none",background:PC[ph]+"22",borderRadius:6,padding:"4px 8px",flexShrink:0}}>↗ YouTube</a>
           <div onClick={()=>setOpen(isOpen?null:v.day)} style={{fontSize:10,color:"#4a5568",cursor:"pointer",marginLeft:4}}>{isOpen?"^":"v"}</div>
         </div>
-        {isOpen&&(<div style={{padding:"12px 14px",borderTop:"1px solid #1e2a3a"}}>
-          <div style={{display:"flex",gap:4,marginBottom:12}}>{["summary","recall","notes"].map(t=><button key={t} onClick={()=>setVtab(t)} style={{background:vtab===t?PC[ph]:"#1e2a3a",border:"none",borderRadius:6,color:vtab===t?"#0d1117":"#4a5568",fontSize:11,padding:"5px 12px",cursor:"pointer",fontFamily:"monospace",fontWeight:vtab===t?700:400}}>{t}</button>)}</div>
-          {vtab==="summary"&&<ul style={{margin:0,padding:0,listStyle:"none",display:"flex",flexDirection:"column",gap:6}}>{v.summary.map((s,i)=><li key={i} style={{display:"flex",gap:8,fontSize:12,color:"#94a3b8",lineHeight:1.5}}><span style={{color:PC[ph],flexShrink:0,marginTop:2}}>›</span>{s}</li>)}</ul>}
-          {vtab==="recall"&&<div style={{display:"flex",flexDirection:"column",gap:8}}>{v.recall.map((q,i)=><RecallCard key={i} q={q} color={PC[ph]}/>)}</div>}
-          {vtab==="notes"&&<div><textarea value={notes[k]||""} onChange={e=>setNotes({...notes,[k]:e.target.value})} rows={4} placeholder="Your notes for this video..." style={{...inp,resize:"vertical",lineHeight:1.6}}/><div style={{fontSize:10,color:"#4a5568",marginTop:4}}>Notes auto-saved</div></div>}
+        {isOpen&&(<div style={{borderTop:"1px solid #1e2a3a"}}>
+          <div style={{display:"flex",gap:4,padding:"10px 14px 0"}}>{["video","summary","recall","notes"].map(t=><button key={t} onClick={()=>setTab(v.day,t)} style={{background:ct===t?PC[ph]:"#1e2a3a",border:"none",borderRadius:6,color:ct===t?"#0d1117":"#4a5568",fontSize:11,padding:"5px 12px",cursor:"pointer",fontFamily:"monospace",fontWeight:ct===t?700:400}}>{t}</button>)}</div>
+          <div style={{padding:"12px 14px"}}>
+          {ct==="video"&&(<div><div style={{position:"relative",width:"100%",paddingBottom:"56.25%",borderRadius:8,overflow:"hidden",background:"#000",marginBottom:8}}><iframe src={embedUrl} title={`Day ${v.day}: ${v.title}`} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen/></div><div style={{fontSize:10,color:"#4a5568",textAlign:"center"}}>Embedded from Jeremy's IT Lab CCNA playlist · <a href={watchUrl} target="_blank" rel="noopener noreferrer" style={{color:"#00c896"}}>open on YouTube</a></div></div>)}
+          {ct==="summary"&&<ul style={{margin:0,padding:0,listStyle:"none",display:"flex",flexDirection:"column",gap:6}}>{v.summary.map((s,i)=><li key={i} style={{display:"flex",gap:8,fontSize:12,color:"#94a3b8",lineHeight:1.5}}><span style={{color:PC[ph],flexShrink:0,marginTop:2}}>›</span>{s}</li>)}</ul>}
+          {ct==="recall"&&<div style={{display:"flex",flexDirection:"column",gap:8}}>{v.recall.map((q,i)=><RecallCard key={i} q={q} color={PC[ph]}/>)}</div>}
+          {ct==="notes"&&<div><textarea value={notes[k]||""} onChange={e=>setNotes({...notes,[k]:e.target.value})} rows={4} placeholder="Your notes for this video..." style={{...inp,resize:"vertical",lineHeight:1.6}}/><div style={{fontSize:10,color:"#4a5568",marginTop:4}}>Notes auto-saved</div></div>}
+          </div>
         </div>)}
       </div>);})}</div>
     </div>);})}
@@ -296,7 +306,54 @@ function History({sessions,onDelete}){
   </div></div>);
 }
 
-const TABS=[{id:"dashboard",label:"Dashboard"},{id:"phases",label:"Phases"},{id:"course",label:"Course"},{id:"quiz",label:"Quiz"},{id:"cards",label:"Flashcards"},{id:"timer",label:"Timer"},{id:"log",label:"Log"},{id:"history",label:"History"}];
+function StudyNotes(){
+  const[active,setActive]=useState("quickref"),[search,setSearch]=useState("");
+  const trim=search.trim().toLowerCase();
+  const matchText=str=>str&&str.toLowerCase().includes(trim);
+  const filterSections=secs=>secs.filter(s=>{
+    if(!trim)return true;
+    if(matchText(s.title))return true;
+    if((s.bullets||[]).some(b=>matchText(b)))return true;
+    if(matchText(s.code||""))return true;
+    if(s.table&&(s.table.headers.some(h=>matchText(h))||s.table.rows.some(r=>r.some(c=>matchText(c)))))return true;
+    return false;
+  });
+  const activePart=STUDY_NOTES.find(p=>p.id===active)||STUDY_NOTES[0];
+  const sections=trim
+    ?STUDY_NOTES.flatMap(p=>filterSections(p.sections).map(s=>({...s,_color:p.color,_part:p.title})))
+    :filterSections(activePart.sections).map(s=>({...s,_color:activePart.color,_part:""}));
+
+  const TblStyle={width:"100%",borderCollapse:"collapse",fontSize:11,fontFamily:"monospace"};
+  const ThStyle={padding:"6px 10px",textAlign:"left",color:"#4a5568",borderBottom:"1px solid #1e2a3a",fontWeight:600,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em"};
+  const TdStyle={padding:"6px 10px",color:"#94a3b8",borderBottom:"1px solid #0d1117",verticalAlign:"top",lineHeight:1.5};
+  const renderSec=s=>(
+    <div key={s.title} style={{...card,marginBottom:12}}>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:s.bullets||s.table||s.code?10:0}}>
+        {s._part&&<span style={{fontSize:9,color:s._color,background:s._color+"22",borderRadius:10,padding:"2px 7px",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>{s._part}</span>}
+        <div style={{fontSize:13,fontWeight:700,color:s._color||"#e2e8f0"}}>{s.title}</div>
+      </div>
+      {s.bullets&&<ul style={{margin:"0 0 8px",padding:"0 0 0 4px",listStyle:"none",display:"flex",flexDirection:"column",gap:4}}>{s.bullets.map((b,i)=><li key={i} style={{display:"flex",gap:8,fontSize:12,color:"#94a3b8",lineHeight:1.5}}><span style={{color:s._color||"#4a5568",flexShrink:0}}>›</span>{b}</li>)}</ul>}
+      {s.table&&<div style={{overflowX:"auto",marginBottom:s.code?10:0}}><table style={TblStyle}><thead><tr>{s.table.headers.map(h=><th key={h} style={ThStyle}>{h}</th>)}</tr></thead><tbody>{s.table.rows.map((r,i)=><tr key={i} style={{background:i%2===0?"transparent":"#0d1117"}}>{r.map((c,j)=><td key={j} style={{...TdStyle,color:j===0?"#e2e8f0":"#94a3b8"}}>{c}</td>)}</tr>)}</tbody></table></div>}
+      {s.code&&<pre style={{margin:0,background:"#0d1117",border:"1px solid #1e2a3a",borderRadius:8,padding:"12px 14px",fontSize:11,color:"#94a3b8",lineHeight:1.7,overflowX:"auto",fontFamily:'"Courier New",Courier,monospace',whiteSpace:"pre"}}>{s.code}</pre>}
+    </div>
+  );
+
+  return(
+    <div>
+      <div style={{marginBottom:12}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search notes..." style={{...inp,marginBottom:10}} autoComplete="off"/>
+        {!trim&&<div style={{display:"flex",flexWrap:"wrap",gap:6}}>{STUDY_NOTES.map(p=>(
+          <button key={p.id} onClick={()=>setActive(p.id)} style={{background:active===p.id?p.color:"#1e2a3a",border:`1px solid ${active===p.id?p.color:"#1e2a3a"}`,borderRadius:20,color:active===p.id?"#0d1117":"#4a5568",fontSize:11,padding:"5px 13px",cursor:"pointer",fontFamily:"monospace",fontWeight:active===p.id?700:400,transition:"all 0.15s"}}>{p.title}</button>
+        ))}</div>}
+        {trim&&<div style={{fontSize:11,color:"#4a5568",marginTop:4}}>{sections.length} result{sections.length!==1?"s":""} for "{search.trim()}"</div>}
+      </div>
+      {sections.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#4a5568",fontSize:12}}>No results for "{search.trim()}"</div>}
+      <div>{sections.map(renderSec)}</div>
+    </div>
+  );
+}
+
+const TABS=[{id:"dashboard",label:"Dashboard"},{id:"phases",label:"Phases"},{id:"course",label:"Course"},{id:"quiz",label:"Quiz"},{id:"cards",label:"Flashcards"},{id:"timer",label:"Timer"},{id:"log",label:"Log"},{id:"history",label:"History"},{id:"notes",label:"Notes"}];
 
 export default function App(){
   const[tab,setTab]=useState("dashboard"),[checked,setChecked]=useState({}),[notes,setNotes]=useState({}),[weak,setWeak]=useState({}),[sessions,setSessions]=useState([]),[examDate,setExamDate]=useState(""),[openPhase,setOpenPhase]=useState(1),[quizHistory,setQuizHistory]=useState([]),[srsData,setSrsData]=useState({}),[loaded,setLoaded]=useState(false),[syncing,setSyncing]=useState(false),[user,setUser]=useState(null),[authReady,setAuthReady]=useState(!USE_SB);
@@ -339,6 +396,7 @@ export default function App(){
       {tab==="timer"    &&<Timer onAutoLog={autoLog}/>}
       {tab==="log"      &&<LogSession onAdd={addSession}/>}
       {tab==="history"  &&<History sessions={sessions} onDelete={delSession}/>}
+      {tab==="notes"    &&<StudyNotes/>}
     </div>
   </div>);
 }

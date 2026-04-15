@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push:*)",
+      "WebFetch(domain:www.youtube.com)",
+      "Bash(npm run:*)"
+    ]
+  }
+}
