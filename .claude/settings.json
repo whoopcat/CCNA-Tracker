@@ -4,7 +4,12 @@
       "Bash(npx vite:*)",
       "Bash(npm install:*)",
       "Bash(node_modules/.bin/vite build:*)",
-      "Read(//c/Users/subqu/.claude/projects/c--CCNA-Tracker/**)"
+      "Read(//c/Users/subqu/.claude/projects/c--CCNA-Tracker/**)",
+      "WebFetch(domain:yt.lemnoslife.com)",
+      "Bash(find /c/CCNA-Tracker -type f ! -path \"*/node_modules/*\" ! -path \"*/.git/*\" ! -path \"*/dist/*\" -exec grep -l \"youtube\\\\|videoId\\\\|watch?v=\" {} \\\\;)",
+      "WebFetch(domain:invidious.jing.rocks)",
+      "WebFetch(domain:inv.riverside.rocks)",
+      "WebSearch"
     ]
   }
 }
